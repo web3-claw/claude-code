@@ -6,6 +6,9 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const CURRENT_PACKAGE_VERSION = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')
+).version;
 
 const {
   createInstallState,
@@ -66,7 +69,7 @@ function runTests() {
         },
       ],
       source: {
-        repoVersion: '1.9.0',
+        repoVersion: CURRENT_PACKAGE_VERSION,
         repoCommit: 'abc123',
         manifestVersion: 1,
       },
@@ -100,7 +103,7 @@ function runTests() {
         },
         operations: [],
         source: {
-          repoVersion: '1.9.0',
+          repoVersion: CURRENT_PACKAGE_VERSION,
           repoCommit: 'abc123',
           manifestVersion: 1,
         },
@@ -117,12 +120,104 @@ function runTests() {
     }
   })) passed++; else failed++;
 
+  if (test('deep-clones nested operation metadata for lifecycle-managed operations', () => {
+    const operation = {
+      kind: 'merge-json',
+      moduleId: 'platform-configs',
+      sourceRelativePath: '.cursor/hooks.json',
+      destinationPath: '/repo/.cursor/hooks.json',
+      strategy: 'merge-json',
+      ownership: 'managed',
+      scaffoldOnly: false,
+      mergePayload: {
+        nested: {
+          enabled: true,
+        },
+      },
+      previousValue: {
+        nested: {
+          enabled: false,
+        },
+      },
+    };
+
+    const state = createInstallState({
+      adapter: { id: 'cursor-project' },
+      targetRoot: '/repo/.cursor',
+      installStatePath: '/repo/.cursor/ecc-install-state.json',
+      request: {
+        profile: null,
+        modules: ['platform-configs'],
+        legacyLanguages: [],
+        legacyMode: false,
+      },
+      resolution: {
+        selectedModules: ['platform-configs'],
+        skippedModules: [],
+      },
+      operations: [operation],
+      source: {
+        repoVersion: CURRENT_PACKAGE_VERSION,
+        repoCommit: 'abc123',
+        manifestVersion: 1,
+      },
+    });
+
+    operation.mergePayload.nested.enabled = false;
+    operation.previousValue.nested.enabled = true;
+
+    assert.strictEqual(state.operations[0].mergePayload.nested.enabled, true);
+    assert.strictEqual(state.operations[0].previousValue.nested.enabled, false);
+  })) passed++; else failed++;
+
   if (test('rejects invalid install-state payloads on read', () => {
     const testDir = createTestDir();
     const statePath = path.join(testDir, 'ecc-install-state.json');
 
     try {
       fs.writeFileSync(statePath, JSON.stringify({ schemaVersion: 'ecc.install.v1' }, null, 2));
+      assert.throws(
+        () => readInstallState(statePath),
+        /Invalid install-state/
+      );
+    } finally {
+      cleanupTestDir(testDir);
+    }
+  })) passed++; else failed++;
+
+  if (test('rejects unexpected properties and missing required request fields', () => {
+    const testDir = createTestDir();
+    const statePath = path.join(testDir, 'ecc-install-state.json');
+
+    try {
+      fs.writeFileSync(statePath, JSON.stringify({
+        schemaVersion: 'ecc.install.v1',
+        installedAt: '2026-03-13T00:00:00Z',
+        unexpected: true,
+        target: {
+          id: 'cursor-project',
+          root: '/repo/.cursor',
+          installStatePath: '/repo/.cursor/ecc-install-state.json',
+        },
+        request: {
+          modules: [],
+          includeComponents: [],
+          excludeComponents: [],
+          legacyLanguages: [],
+          legacyMode: false,
+        },
+        resolution: {
+          selectedModules: [],
+          skippedModules: [],
+        },
+        source: {
+          repoVersion: CURRENT_PACKAGE_VERSION,
+          repoCommit: 'abc123',
+          manifestVersion: 1,
+        },
+        operations: [],
+      }, null, 2));
+
       assert.throws(
         () => readInstallState(statePath),
         /Invalid install-state/

@@ -61,6 +61,12 @@ function runTests() {
   let passed = 0;
   let failed = 0;
 
+  if (process.platform === 'win32') {
+    console.log('  - skipped on Windows; install.ps1 covers the native wrapper path');
+    console.log(`\nResults: Passed: ${passed}, Failed: ${failed}`);
+    process.exit(0);
+  }
+
   if (test('delegates to the Node installer and preserves dry-run output', () => {
     const homeDir = createTempDir('install-sh-home-');
     const projectDir = createTempDir('install-sh-project-');
@@ -78,6 +84,15 @@ function runTests() {
       cleanup(homeDir);
       cleanup(projectDir);
     }
+  })) passed++; else failed++;
+
+  if (test('exposes the corrected Claude target help text', () => {
+    const result = run(['--help']);
+    assert.strictEqual(result.code, 0, result.stderr);
+    assert.ok(
+      result.stdout.includes('claude       (default) - Install ECC into ~/.claude/'),
+      'help text should describe the Claude target as a full ~/.claude install surface'
+    );
   })) passed++; else failed++;
 
   console.log(`\nResults: Passed: ${passed}, Failed: ${failed}`);
